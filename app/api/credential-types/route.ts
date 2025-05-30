@@ -3,8 +3,8 @@ import { NextResponse } from "next/server"
 // Student Login Site向けのAPI エンドポイント
 export async function GET() {
   try {
+    // ローカルストレージの代わりにサーバーサイドでデータを管理
     // 実際の実装では、データベースから取得
-    // ここではローカルストレージのデータをシミュレート
     const credentialTypes = [
       {
         id: "1",

@@ -9,7 +9,7 @@ import { Switch } from "@/components/ui/switch"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { CheckCircle, XCircle, RefreshCw, LinkIcon, Save, Play } from "lucide-react"
+import { CheckCircle, XCircle, RefreshCw, LinkIcon, Save, Play, ExternalLink } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 
 interface IntegrationSettings {
@@ -27,7 +27,7 @@ export default function IntegrationPage() {
   const { toast } = useToast()
   const [settings, setSettings] = useState<IntegrationSettings>({
     enabled: false,
-    studentLoginUrl: "https://student-login.example.com",
+    studentLoginUrl: "https://v0-student-login-site.vercel.app",
     apiKey: "sl_" + Math.random().toString(36).substring(2, 15),
     webhookSecret: "whsec_" + Math.random().toString(36).substring(2, 15),
     autoSync: true,
@@ -66,7 +66,6 @@ export default function IntegrationPage() {
       }),
     )
 
-    // API呼び出しをシミュレート
     setTimeout(() => {
       setIsLoading(false)
       setSettings({
@@ -99,50 +98,111 @@ export default function IntegrationPage() {
     }, 1500)
   }
 
-  const testConnection = () => {
+  const testConnection = async () => {
     setIsLoading(true)
 
-    // 接続テストをシミュレート
-    setTimeout(() => {
-      const success = Math.random() > 0.2 // 80%の確率で成功
+    try {
+      const response = await fetch("/api/test-connection", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          studentLoginUrl: settings.studentLoginUrl,
+          apiKey: settings.apiKey,
+        }),
+      })
 
+      const result = await response.json()
+
+      if (result.success) {
+        setSettings({
+          ...settings,
+          connectionStatus: "connected",
+          errorMessage: undefined,
+        })
+
+        toast({
+          title: "接続テスト成功",
+          description: "Student Login Siteとの接続が確認できました",
+        })
+      } else {
+        setSettings({
+          ...settings,
+          connectionStatus: "error",
+          errorMessage: result.details || "接続に失敗しました",
+        })
+
+        toast({
+          title: "接続テスト失敗",
+          description: result.error || "接続に失敗しました。設定を確認してください",
+          variant: "destructive",
+        })
+      }
+    } catch (error) {
       setSettings({
         ...settings,
-        connectionStatus: success ? "connected" : "error",
-        errorMessage: success ? undefined : "接続タイムアウトが発生しました。URLを確認してください。",
+        connectionStatus: "error",
+        errorMessage: "ネットワークエラーが発生しました",
       })
-
-      setIsLoading(false)
 
       toast({
-        title: success ? "接続テスト成功" : "接続テスト失敗",
-        description: success
-          ? "Student Login Siteとの接続が確認できました"
-          : "接続に失敗しました。設定を確認してください",
-        variant: success ? "default" : "destructive",
+        title: "接続テスト失敗",
+        description: "ネットワークエラーが発生しました",
+        variant: "destructive",
       })
-    }, 2000)
+    } finally {
+      setIsLoading(false)
+    }
   }
 
-  const syncCredentialTypes = () => {
+  const syncCredentialTypes = async () => {
     setIsLoading(true)
 
-    // クレデンシャルタイプの同期をシミュレート
-    setTimeout(() => {
+    try {
       const credentialTypes = JSON.parse(localStorage.getItem("credentialTypes") || "[]")
 
-      setSettings({
-        ...settings,
-        lastSyncTime: new Date().toISOString(),
+      const response = await fetch("/api/sync/credential-types", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          credentialTypes: credentialTypes.filter((ct: any) => ct.isActive),
+          apiKey: settings.apiKey,
+        }),
       })
 
-      setIsLoading(false)
+      const result = await response.json()
 
+      if (result.success) {
+        const updatedSettings = {
+          ...settings,
+          lastSyncTime: new Date().toISOString(),
+        }
+        setSettings(updatedSettings)
+        localStorage.setItem("integrationSettings", JSON.stringify(updatedSettings))
+
+        toast({
+          title: "同期完了",
+          description: `${result.data.syncedCount}個のクレデンシャルタイプをStudent Login Siteと同期しました`,
+        })
+      } else {
+        toast({
+          title: "同期失敗",
+          description: result.error || "同期に失敗しました",
+          variant: "destructive",
+        })
+      }
+    } catch (error) {
       toast({
-        title: "同期完了",
-        description: `${credentialTypes.length}個のクレデンシャルタイプをStudent Login Siteと同期しました`,
+        title: "同期エラー",
+        description: "同期中にエラーが発生しました",
+        variant: "destructive",
       })
-    }, 1500)
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   const toggleTestMode = () => {
@@ -179,6 +239,10 @@ export default function IntegrationPage() {
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" onClick={toggleTestMode}>
             {testMode ? "テストモード: ON" : "テストモード: OFF"}
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => window.open(settings.studentLoginUrl, "_blank")}>
+            <ExternalLink className="h-4 w-4 mr-1" />
+            Student Login Site
           </Button>
         </div>
       </div>
@@ -220,8 +284,11 @@ export default function IntegrationPage() {
                   id="student-login-url"
                   value={settings.studentLoginUrl}
                   onChange={(e) => setSettings({ ...settings, studentLoginUrl: e.target.value })}
-                  placeholder="https://student-login.example.com"
+                  placeholder="https://v0-student-login-site.vercel.app"
                 />
+                <p className="text-xs text-gray-500">
+                  実際のStudent Login SiteのURL: https://v0-student-login-site.vercel.app
+                </p>
               </div>
 
               <div className="space-y-2">
