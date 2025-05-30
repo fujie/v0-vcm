@@ -9,7 +9,7 @@ import { Switch } from "@/components/ui/switch"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { CheckCircle, XCircle, RefreshCw, LinkIcon, Save, Play, ExternalLink } from "lucide-react"
+import { CheckCircle, XCircle, RefreshCw, LinkIcon, Save, Play, ExternalLink, Activity } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 
 interface IntegrationSettings {
@@ -37,6 +37,7 @@ export default function IntegrationPage() {
 
   const [isLoading, setIsLoading] = useState(false)
   const [testMode, setTestMode] = useState(false)
+  const [healthStatus, setHealthStatus] = useState<any>(null)
 
   useEffect(() => {
     // 保存された設定を読み込む
@@ -44,7 +45,20 @@ export default function IntegrationPage() {
     if (savedSettings) {
       setSettings(JSON.parse(savedSettings))
     }
+
+    // 自身のヘルスチェックを実行
+    checkOwnHealth()
   }, [])
+
+  const checkOwnHealth = async () => {
+    try {
+      const response = await fetch("/api/health")
+      const health = await response.json()
+      setHealthStatus(health)
+    } catch (error) {
+      console.error("Own health check failed:", error)
+    }
+  }
 
   const saveSettings = () => {
     setIsLoading(true)
@@ -234,6 +248,12 @@ export default function IntegrationPage() {
             )}
             {settings.connectionStatus === "connected" ? "接続済み" : "未接続"}
           </Badge>
+          {healthStatus && (
+            <Badge variant="outline" className="px-3 py-1">
+              <Activity className="h-4 w-4 mr-1" />
+              システム: {healthStatus.status}
+            </Badge>
+          )}
           {settings.lastSyncTime && (
             <span className="text-sm text-gray-500">
               最終同期: {new Date(settings.lastSyncTime).toLocaleString("ja-JP")}
@@ -257,6 +277,43 @@ export default function IntegrationPage() {
           <AlertTitle>接続エラー</AlertTitle>
           <AlertDescription>{settings.errorMessage || "Student Login Siteとの接続に問題があります"}</AlertDescription>
         </Alert>
+      )}
+
+      {healthStatus && (
+        <Card>
+          <CardHeader>
+            <CardTitle>システムヘルス</CardTitle>
+            <CardDescription>Verifiable Credential Managerの現在の状態</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <Label>サービス状態</Label>
+                <Badge variant={healthStatus.status === "healthy" ? "default" : "destructive"}>
+                  {healthStatus.status}
+                </Badge>
+              </div>
+              <div className="space-y-2">
+                <Label>稼働時間</Label>
+                <span className="text-sm">{Math.floor(healthStatus.uptime / 60)} 分</span>
+              </div>
+              <div className="space-y-2">
+                <Label>環境</Label>
+                <span className="text-sm">{healthStatus.environment}</span>
+              </div>
+            </div>
+            <div className="mt-4">
+              <Label>利用可能なエンドポイント</Label>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-2">
+                {Object.entries(healthStatus.endpoints || {}).map(([key, endpoint]) => (
+                  <div key={key} className="text-xs font-mono bg-gray-100 px-2 py-1 rounded">
+                    {endpoint as string}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       )}
 
       <Tabs defaultValue="settings">
@@ -363,6 +420,10 @@ export default function IntegrationPage() {
                   <LinkIcon className="h-4 w-4 mr-2" />
                   接続テスト
                 </Button>
+                <Button variant="outline" onClick={checkOwnHealth} disabled={isLoading}>
+                  <Activity className="h-4 w-4 mr-2" />
+                  ヘルスチェック
+                </Button>
               </div>
             </CardContent>
           </Card>
@@ -373,6 +434,25 @@ export default function IntegrationPage() {
               <CardDescription>Student Login Siteからのリクエストを受け取るエンドポイント</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label>ヘルスチェック API</Label>
+                <div className="flex items-center gap-2">
+                  <Input readOnly value={`${window.location.origin}/api/health`} />
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      navigator.clipboard.writeText(`${window.location.origin}/api/health`)
+                      toast({
+                        title: "URLをコピーしました",
+                        description: "Student Login Siteの設定画面に貼り付けてください",
+                      })
+                    }}
+                  >
+                    コピー
+                  </Button>
+                </div>
+              </div>
+
               <div className="space-y-2">
                 <Label>クレデンシャル発行通知 Webhook</Label>
                 <div className="flex items-center gap-2">
