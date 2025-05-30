@@ -12,6 +12,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { CheckCircle, XCircle, RefreshCw, LinkIcon, Save, Play, ExternalLink, Activity } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 
+// IntegrationSettings インターフェースに healthApiKey と healthRequireAuth を追加
 interface IntegrationSettings {
   enabled: boolean
   studentLoginUrl: string
@@ -21,10 +22,13 @@ interface IntegrationSettings {
   lastSyncTime: string | null
   connectionStatus: "connected" | "disconnected" | "error"
   errorMessage?: string
+  healthApiKey?: string
+  healthRequireAuth?: boolean
 }
 
 export default function IntegrationPage() {
   const { toast } = useToast()
+  // useState の初期値に healthApiKey と healthRequireAuth を追加
   const [settings, setSettings] = useState<IntegrationSettings>({
     enabled: false,
     studentLoginUrl: "https://v0-student-login-site.vercel.app",
@@ -33,6 +37,8 @@ export default function IntegrationPage() {
     autoSync: true,
     lastSyncTime: null,
     connectionStatus: "disconnected",
+    healthApiKey: "",
+    healthRequireAuth: false,
   })
 
   const [isLoading, setIsLoading] = useState(false)
@@ -231,6 +237,44 @@ export default function IntegrationPage() {
     })
   }
 
+  // generateHealthApiKey 関数を追加
+  const generateHealthApiKey = async () => {
+    try {
+      const response = await fetch("/api/health-settings", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: "Bearer admin_token", // 実際の実装では適切な認証トークンを使用
+        },
+        body: JSON.stringify({
+          action: "generate_key",
+        }),
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        setSettings({ ...settings, healthApiKey: result.data.apiKey })
+        toast({
+          title: "新しいヘルスチェックAPI Keyを生成しました",
+          description: "このキーを安全に保管してください。Student Login Siteの設定で使用します。",
+        })
+      } else {
+        toast({
+          title: "API Key生成に失敗しました",
+          description: result.error,
+          variant: "destructive",
+        })
+      }
+    } catch (error) {
+      toast({
+        title: "API Key生成エラー",
+        description: "API Key生成中にエラーが発生しました",
+        variant: "destructive",
+      })
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div>
@@ -411,6 +455,56 @@ export default function IntegrationPage() {
                 <Label htmlFor="auto-sync">変更を自動的に同期する</Label>
               </div>
 
+              {/* 基本設定カードの中に、ヘルスチェック認証設定を追加
+              既存の autoSync の Switch の後に以下を追加： */}
+              <div className="border-t pt-4 mt-4">
+                <h4 className="text-sm font-medium mb-3">ヘルスチェック認証設定</h4>
+
+                <div className="space-y-4">
+                  <div className="flex items-center space-x-2">
+                    <Switch
+                      id="health-require-auth"
+                      checked={settings.healthRequireAuth || false}
+                      onCheckedChange={(checked) => setSettings({ ...settings, healthRequireAuth: checked })}
+                    />
+                    <Label htmlFor="health-require-auth">ヘルスチェックにAPI Key認証を要求</Label>
+                  </div>
+
+                  {settings.healthRequireAuth && (
+                    <div className="space-y-2">
+                      <Label htmlFor="health-api-key">ヘルスチェック用 API Key</Label>
+                      <div className="flex gap-2">
+                        <Input
+                          id="health-api-key"
+                          value={settings.healthApiKey || ""}
+                          onChange={(e) => setSettings({ ...settings, healthApiKey: e.target.value })}
+                          placeholder="health_xxxxxxxxxxxxx"
+                          type="password"
+                        />
+                        <Button variant="outline" onClick={generateHealthApiKey}>
+                          生成
+                        </Button>
+                      </div>
+                      <p className="text-xs text-gray-500">
+                        Student Login Siteがヘルスチェックエンドポイントにアクセスする際に使用するAPI Keyです。
+                      </p>
+                    </div>
+                  )}
+
+                  <div className="bg-blue-50 p-3 rounded-lg">
+                    <h5 className="text-sm font-medium text-blue-900 mb-2">使用方法</h5>
+                    <div className="text-xs text-blue-800 space-y-1">
+                      <p>
+                        <strong>Authorization ヘッダー:</strong> Bearer {settings.healthApiKey || "your_api_key"}
+                      </p>
+                      <p>
+                        <strong>X-API-Key ヘッダー:</strong> {settings.healthApiKey || "your_api_key"}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               <div className="flex gap-2">
                 <Button onClick={saveSettings} disabled={isLoading}>
                   <Save className="h-4 w-4 mr-2" />
@@ -483,6 +577,77 @@ export default function IntegrationPage() {
                       toast({
                         title: "URLをコピーしました",
                         description: "Student Login Siteの設定画面に貼り付けてください",
+                      })
+                    }}
+                  >
+                    コピー
+                  </Button>
+                </div>
+              </div>
+              {/* Webhook エンドポイントカードの中に、ヘルスチェックエンドポイントの情報を追加
+              既存の "クレデンシャル無効化通知 Webhook" の後に以下を追加： */}
+
+              <div className="space-y-2">
+                <Label>ヘルスチェック API</Label>
+                <div className="flex items-center gap-2">
+                  <Input readOnly value={`${window.location.origin}/api/health`} />
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      navigator.clipboard.writeText(`${window.location.origin}/api/health`)
+                      toast({
+                        title: "URLをコピーしました",
+                        description: "Student Login Siteの設定画面に貼り付けてください",
+                      })
+                    }}
+                  >
+                    コピー
+                  </Button>
+                </div>
+                {settings.healthRequireAuth && settings.healthApiKey && (
+                  <div className="mt-2 p-2 bg-yellow-50 rounded border">
+                    <p className="text-xs text-yellow-800">
+                      <strong>認証が必要:</strong> このエンドポイントにアクセスする際は、以下のいずれかの方法でAPI
+                      Keyを送信してください：
+                    </p>
+                    <div className="mt-1 text-xs font-mono text-yellow-900">
+                      <p>Authorization: Bearer {settings.healthApiKey}</p>
+                      <p>X-API-Key: {settings.healthApiKey}</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label>システムステータス API</Label>
+                <div className="flex items-center gap-2">
+                  <Input readOnly value={`${window.location.origin}/api/status`} />
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      navigator.clipboard.writeText(`${window.location.origin}/api/status`)
+                      toast({
+                        title: "URLをコピーしました",
+                        description: "詳細なシステム情報を取得するAPIエンドポイントです",
+                      })
+                    }}
+                  >
+                    コピー
+                  </Button>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Ping API</Label>
+                <div className="flex items-center gap-2">
+                  <Input readOnly value={`${window.location.origin}/api/ping`} />
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      navigator.clipboard.writeText(`${window.location.origin}/api/ping`)
+                      toast({
+                        title: "URLをコピーしました",
+                        description: "シンプルな接続確認用のAPIエンドポイントです",
                       })
                     }}
                   >

@@ -1,14 +1,63 @@
 import { NextResponse } from "next/server"
 
+// ヘルスチェック用のAPI Key検証
+function validateHealthApiKey(request: Request): { isValid: boolean; isRequired: boolean } {
+  // 実際の実装では環境変数やデータベースから取得
+  const healthApiKey = process.env.HEALTH_API_KEY || null
+  const requireAuth = process.env.HEALTH_REQUIRE_AUTH === "true"
+
+  if (!requireAuth || !healthApiKey) {
+    return { isValid: true, isRequired: false }
+  }
+
+  const authHeader = request.headers.get("authorization")
+  const apiKeyHeader = request.headers.get("x-api-key")
+
+  let providedKey = null
+
+  if (authHeader && authHeader.startsWith("Bearer ")) {
+    providedKey = authHeader.substring(7)
+  } else if (apiKeyHeader) {
+    providedKey = apiKeyHeader
+  }
+
+  return {
+    isValid: providedKey === healthApiKey,
+    isRequired: true,
+  }
+}
+
 // Student Login Siteからのヘルスチェックリクエストを受け取るAPI
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    // システムの基本的な健全性をチェック
-    const healthData = {
+    const { isValid, isRequired } = validateHealthApiKey(request)
+
+    // 基本的なヘルス情報（認証不要）
+    const basicHealthData = {
       status: "healthy",
       service: "Verifiable Credential Manager",
       version: "1.0.0",
       timestamp: new Date().toISOString(),
+      authentication: {
+        required: isRequired,
+        status: isRequired ? (isValid ? "authenticated" : "unauthenticated") : "not_required",
+      },
+    }
+
+    // 認証が必要で無効な場合は基本情報のみ返す
+    if (isRequired && !isValid) {
+      return NextResponse.json(
+        {
+          ...basicHealthData,
+          message: "API key required for detailed health information",
+        },
+        { status: 401 },
+      )
+    }
+
+    // 詳細なヘルス情報（認証済みまたは認証不要の場合）
+    const detailedHealthData = {
+      ...basicHealthData,
       uptime: process.uptime(),
       environment: process.env.NODE_ENV || "development",
       features: {
@@ -26,19 +75,14 @@ export async function GET() {
         webhookCredentialRevoked: "/api/webhooks/credential-revoked",
         sync: "/api/sync/credential-types",
       },
+      checks: {
+        database: "healthy",
+        storage: "healthy",
+        memory: process.memoryUsage(),
+      },
     }
 
-    // 基本的なシステムチェック
-    const checks = {
-      database: "healthy", // 実際の実装ではデータベース接続をチェック
-      storage: "healthy", // 実際の実装ではストレージ接続をチェック
-      memory: process.memoryUsage(),
-    }
-
-    return NextResponse.json({
-      ...healthData,
-      checks,
-    })
+    return NextResponse.json(detailedHealthData)
   } catch (error) {
     console.error("Health check failed:", error)
 
@@ -57,32 +101,41 @@ export async function GET() {
 // POSTリクエストもサポート（Student Login Siteが認証情報を送信する場合）
 export async function POST(request: Request) {
   try {
+    const { isValid, isRequired } = validateHealthApiKey(request)
     const body = await request.json().catch(() => ({}))
-    const authHeader = request.headers.get("authorization")
 
-    // 認証情報がある場合は検証
-    let authStatus = "none"
-    if (authHeader) {
-      if (authHeader.startsWith("Bearer ")) {
-        const token = authHeader.substring(7)
-        // 実際の実装では適切なトークン検証を行う
-        authStatus = token.startsWith("sl_") ? "valid" : "invalid"
-      } else {
-        authStatus = "invalid_format"
-      }
-    }
-
-    const healthData = {
+    // 基本的なヘルス情報
+    const basicHealthData = {
       status: "healthy",
       service: "Verifiable Credential Manager",
       version: "1.0.0",
       timestamp: new Date().toISOString(),
+      authentication: {
+        required: isRequired,
+        status: isRequired ? (isValid ? "authenticated" : "unauthenticated") : "not_required",
+      },
+    }
+
+    // 認証が必要で無効な場合
+    if (isRequired && !isValid) {
+      return NextResponse.json(
+        {
+          ...basicHealthData,
+          message: "API key required for detailed health information",
+          client: {
+            userAgent: request.headers.get("user-agent"),
+            origin: request.headers.get("origin"),
+          },
+        },
+        { status: 401 },
+      )
+    }
+
+    // 詳細なヘルス情報
+    const detailedHealthData = {
+      ...basicHealthData,
       uptime: process.uptime(),
       environment: process.env.NODE_ENV || "development",
-      authentication: {
-        status: authStatus,
-        required: false, // ヘルスチェックには認証不要
-      },
       client: {
         userAgent: request.headers.get("user-agent"),
         origin: request.headers.get("origin"),
@@ -105,7 +158,7 @@ export async function POST(request: Request) {
       },
     }
 
-    return NextResponse.json(healthData)
+    return NextResponse.json(detailedHealthData)
   } catch (error) {
     console.error("Health check POST failed:", error)
 
@@ -128,7 +181,7 @@ export async function OPTIONS() {
     headers: {
       "Access-Control-Allow-Origin": "*",
       "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type, Authorization",
+      "Access-Control-Allow-Headers": "Content-Type, Authorization, X-API-Key",
       "Access-Control-Max-Age": "86400",
     },
   })
