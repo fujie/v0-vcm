@@ -6,7 +6,7 @@ import { useEffect, useState } from "react"
 import { useRouter, usePathname } from "next/navigation"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
-import { Shield, Home, FileText, Users, LogOut, Menu, LinkIcon } from "lucide-react"
+import { Shield, Home, FileText, Users, LogOut, Menu, LinkIcon, List } from "lucide-react"
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
 
 export default function DashboardLayout({
@@ -41,6 +41,7 @@ export default function DashboardLayout({
     { name: "Credential Types", href: "/dashboard/credential-types", icon: FileText },
     { name: "発行済みクレデンシャル", href: "/dashboard/issued-credentials", icon: Users },
     { name: "Student Login連携", href: "/dashboard/integration", icon: LinkIcon },
+    { name: "APIログ", href: "/dashboard/logs", icon: List },
   ]
 
   const Sidebar = () => (

@@ -2,9 +2,10 @@
 
 import { useEffect, useState, useCallback } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { FileText, Users, CheckCircle, XCircle, LinkIcon, RefreshCw } from "lucide-react"
+import { FileText, Users, CheckCircle, XCircle, LinkIcon, RefreshCw, List } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
+import { getApiLogs } from "@/lib/api-logs"
 
 interface DashboardStats {
   totalCredentialTypes: number
@@ -14,6 +15,9 @@ interface DashboardStats {
   integrationStatus: "connected" | "disconnected" | "error"
   lastSyncTime: string | null
   integrationEnabled: boolean
+  totalApiLogs: number
+  successfulApiLogs: number
+  failedApiLogs: number
 }
 
 export default function DashboardPage() {
@@ -25,6 +29,9 @@ export default function DashboardPage() {
     integrationStatus: "disconnected",
     lastSyncTime: null,
     integrationEnabled: false,
+    totalApiLogs: 0,
+    successfulApiLogs: 0,
+    failedApiLogs: 0,
   })
 
   const [lastUpdate, setLastUpdate] = useState<number>(Date.now())
@@ -35,6 +42,7 @@ export default function DashboardPage() {
       const credentialTypes = JSON.parse(localStorage.getItem("credentialTypes") || "[]")
       const issuedCredentials = JSON.parse(localStorage.getItem("issuedCredentials") || "[]")
       const integrationSettings = JSON.parse(localStorage.getItem("integrationSettings") || "{}")
+      const apiLogs = getApiLogs()
 
       const activeCredentials = issuedCredentials.filter((cred: any) => cred.status === "active").length
       const revokedCredentials = issuedCredentials.filter((cred: any) => cred.status === "revoked").length
@@ -47,6 +55,10 @@ export default function DashboardPage() {
         connectionStatus = integrationSettings.connectionStatus || "disconnected"
       }
 
+      // APIログの統計
+      const successfulApiLogs = apiLogs.filter((log) => log.success).length
+      const failedApiLogs = apiLogs.filter((log) => !log.success).length
+
       setStats({
         totalCredentialTypes: credentialTypes.length,
         totalIssuedCredentials: issuedCredentials.length,
@@ -55,6 +67,9 @@ export default function DashboardPage() {
         integrationStatus: connectionStatus as "connected" | "disconnected" | "error",
         lastSyncTime: integrationSettings.lastSyncTime || null,
         integrationEnabled,
+        totalApiLogs: apiLogs.length,
+        successfulApiLogs,
+        failedApiLogs,
       })
 
       setLastUpdate(Date.now())
@@ -74,7 +89,12 @@ export default function DashboardPage() {
 
     // ローカルストレージの変更を監視
     const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === "credentialTypes" || e.key === "issuedCredentials" || e.key === "integrationSettings") {
+      if (
+        e.key === "credentialTypes" ||
+        e.key === "issuedCredentials" ||
+        e.key === "integrationSettings" ||
+        e.key === "apiLogs"
+      ) {
         loadStats()
       }
     }
@@ -219,34 +239,30 @@ export default function DashboardPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>システム情報</CardTitle>
-            <CardDescription>現在のシステム設定</CardDescription>
+            <CardTitle>APIログ統計</CardTitle>
+            <CardDescription>Student Login Siteとの通信ログ</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
               <div className="flex justify-between">
-                <span className="text-sm text-gray-600">バージョン</span>
-                <span className="text-sm font-medium">v1.0.0</span>
+                <span className="text-sm text-gray-600">総ログ数</span>
+                <span className="text-sm font-medium">{stats.totalApiLogs}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-sm text-gray-600">最終更新</span>
-                <span className="text-sm font-medium">{new Date().toLocaleDateString("ja-JP")}</span>
+                <span className="text-sm text-gray-600">成功リクエスト</span>
+                <span className="text-sm font-medium text-green-600">{stats.successfulApiLogs}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-sm text-gray-600">連携システム</span>
-                <span className="text-sm font-medium">Student Login Site</span>
+                <span className="text-sm text-gray-600">失敗リクエスト</span>
+                <span className="text-sm font-medium text-red-600">{stats.failedApiLogs}</span>
               </div>
-              <div className="flex justify-between">
-                <span className="text-sm text-gray-600">API状態</span>
-                <span className="text-sm font-medium text-green-600">正常</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-sm text-gray-600">データ同期</span>
-                <span
-                  className={`text-sm font-medium ${stats.integrationEnabled ? "text-green-600" : "text-gray-500"}`}
-                >
-                  {stats.integrationEnabled ? "有効" : "無効"}
-                </span>
+              <div className="pt-2">
+                <Link href="/dashboard/logs">
+                  <Button variant="outline" size="sm">
+                    <List className="h-4 w-4 mr-2" />
+                    ログを表示
+                  </Button>
+                </Link>
               </div>
             </div>
           </CardContent>

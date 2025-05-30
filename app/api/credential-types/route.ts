@@ -1,11 +1,20 @@
 import { NextResponse } from "next/server"
 import { headers } from "next/headers"
+import { saveApiLog } from "@/lib/api-logs"
 
 // Student Login Site向けのAPI エンドポイント
 export async function GET(request: Request) {
+  const startTime = Date.now()
+  const headersList = headers()
+  const requestHeaders: Record<string, string> = {}
+
+  // リクエストヘッダーを取得
+  headersList.forEach((value, key) => {
+    requestHeaders[key] = value
+  })
+
   try {
     // 認証ヘッダーを検証
-    const headersList = headers()
     const apiKey = headersList.get("x-api-key") || headersList.get("authorization")?.replace("Bearer ", "")
 
     // 実際の実装では、APIキーの検証を行う
@@ -13,13 +22,28 @@ export async function GET(request: Request) {
     const isValidApiKey = apiKey && (apiKey.startsWith("sl_") || process.env.HEALTH_API_KEY === apiKey)
 
     if (!isValidApiKey) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: "Invalid API key",
-        },
-        { status: 401 },
-      )
+      const errorResponse = {
+        success: false,
+        message: "Invalid API key",
+      }
+
+      // エラーログを記録
+      saveApiLog({
+        timestamp: new Date().toISOString(),
+        endpoint: "/api/credential-types",
+        method: "GET",
+        source: "external",
+        sourceIp: request.headers.get("x-forwarded-for") || "unknown",
+        userAgent: request.headers.get("user-agent") || "unknown",
+        requestHeaders,
+        responseStatus: 401,
+        responseBody: errorResponse,
+        duration: Date.now() - startTime,
+        success: false,
+        error: "Invalid API key",
+      })
+
+      return NextResponse.json(errorResponse, { status: 401 })
     }
 
     // ローカルストレージからクレデンシャルタイプを取得
@@ -60,21 +84,54 @@ export async function GET(request: Request) {
       status: ct.isActive ? "active" : "inactive",
     }))
 
-    return NextResponse.json({
+    const successResponse = {
       success: true,
       credentialTypes: formattedCredentialTypes,
       count: formattedCredentialTypes.length,
+    }
+
+    // 成功ログを記録
+    saveApiLog({
+      timestamp: new Date().toISOString(),
+      endpoint: "/api/credential-types",
+      method: "GET",
+      source: "external",
+      sourceIp: request.headers.get("x-forwarded-for") || "unknown",
+      userAgent: request.headers.get("user-agent") || "unknown",
+      requestHeaders,
+      responseStatus: 200,
+      responseBody: { count: formattedCredentialTypes.length },
+      duration: Date.now() - startTime,
+      success: true,
     })
+
+    return NextResponse.json(successResponse)
   } catch (error) {
     console.error("Credential types API error:", error)
-    return NextResponse.json(
-      {
-        success: false,
-        error: "Failed to fetch credential types",
-        message: error instanceof Error ? error.message : "Unknown error",
-      },
-      { status: 500 },
-    )
+
+    const errorResponse = {
+      success: false,
+      error: "Failed to fetch credential types",
+      message: error instanceof Error ? error.message : "Unknown error",
+    }
+
+    // エラーログを記録
+    saveApiLog({
+      timestamp: new Date().toISOString(),
+      endpoint: "/api/credential-types",
+      method: "GET",
+      source: "external",
+      sourceIp: request.headers.get("x-forwarded-for") || "unknown",
+      userAgent: request.headers.get("user-agent") || "unknown",
+      requestHeaders,
+      responseStatus: 500,
+      responseBody: errorResponse,
+      duration: Date.now() - startTime,
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error",
+    })
+
+    return NextResponse.json(errorResponse, { status: 500 })
   }
 }
 
