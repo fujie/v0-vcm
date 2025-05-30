@@ -124,7 +124,7 @@ export default function IntegrationPage() {
 
         toast({
           title: "接続テスト成功",
-          description: "Student Login Siteとの接続が確認できました",
+          description: `Student Login Siteとの接続が確認できました (HTTP ${result.data.httpStatus})`,
         })
       } else {
         setSettings({
@@ -135,7 +135,7 @@ export default function IntegrationPage() {
 
         toast({
           title: "接続テスト失敗",
-          description: result.error || "接続に失敗しました。設定を確認してください",
+          description: result.details || "接続に失敗しました。URLを確認してください",
           variant: "destructive",
         })
       }
@@ -183,9 +183,13 @@ export default function IntegrationPage() {
         setSettings(updatedSettings)
         localStorage.setItem("integrationSettings", JSON.stringify(updatedSettings))
 
+        const message = result.data.note
+          ? `${result.data.syncedCount}個のクレデンシャルタイプを同期しました (${result.data.note})`
+          : `${result.data.syncedCount}個のクレデンシャルタイプをStudent Login Siteと同期しました`
+
         toast({
           title: "同期完了",
-          description: `${result.data.syncedCount}個のクレデンシャルタイプをStudent Login Siteと同期しました`,
+          description: message,
         })
       } else {
         toast({
