@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { headers } from "next/headers"
 
-// Student Login Site向けのAPI エンドポイント
+// /api/v1/credential-types エンドポイント - /api/credential-types と同じ機能
 export async function GET(request: Request) {
   try {
     // 認証ヘッダーを検証
@@ -9,7 +9,6 @@ export async function GET(request: Request) {
     const apiKey = headersList.get("x-api-key") || headersList.get("authorization")?.replace("Bearer ", "")
 
     // 実際の実装では、APIキーの検証を行う
-    // ここでは簡易的な検証のみ
     const isValidApiKey = apiKey && (apiKey.startsWith("sl_") || process.env.HEALTH_API_KEY === apiKey)
 
     if (!isValidApiKey) {
@@ -23,7 +22,6 @@ export async function GET(request: Request) {
     }
 
     // ローカルストレージからクレデンシャルタイプを取得
-    // 実際の実装では、データベースから取得
     const storedCredentialTypes = localStorage.getItem("credentialTypes")
     const credentialTypes = storedCredentialTypes ? JSON.parse(storedCredentialTypes) : []
 
@@ -71,14 +69,13 @@ export async function GET(request: Request) {
       {
         success: false,
         error: "Failed to fetch credential types",
-        message: error instanceof Error ? error.message : "Unknown error",
       },
       { status: 500 },
     )
   }
 }
 
-// OPTIONSリクエストをサポート（CORS preflight）
+// OPTIONSリクエストをサポート
 export async function OPTIONS() {
   return new NextResponse(null, {
     status: 200,
