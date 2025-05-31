@@ -7,17 +7,68 @@ export function getFormattedCredentialTypes() {
   try {
     // ブラウザ環境でのみ実行
     if (typeof window === "undefined" || typeof localStorage === "undefined") {
-      return []
+      // サーバーサイドの場合はデフォルトデータを返す
+      return getDefaultCredentialTypes()
     }
 
     const storedCredentialTypes = localStorage.getItem("credentialTypes")
-    const credentialTypes = storedCredentialTypes ? JSON.parse(storedCredentialTypes) : []
+    const credentialTypes = storedCredentialTypes ? JSON.parse(storedCredentialTypes) : getDefaultCredentialTypes()
 
-    return credentialTypes.map((ct: any) => formatCredentialType(ct))
+    return credentialTypes
+      .filter((ct: any) => ct.isActive) // 有効なもののみ
+      .map((ct: any) => formatCredentialType(ct))
   } catch (error) {
     console.error("Error getting credential types:", error)
-    return []
+    return getDefaultCredentialTypes().map((ct: any) => formatCredentialType(ct))
   }
+}
+
+/**
+ * デフォルトのクレデンシャルタイプを取得
+ */
+function getDefaultCredentialTypes() {
+  return [
+    {
+      id: "1",
+      name: "学生証",
+      description: "大学の学生証明書",
+      version: "1.0",
+      schema: {
+        type: "object",
+        properties: {
+          studentId: { type: "string", title: "学籍番号" },
+          name: { type: "string", title: "氏名" },
+          department: { type: "string", title: "学部" },
+          year: { type: "number", title: "学年" },
+          enrollmentDate: { type: "string", format: "date", title: "入学日" },
+        },
+        required: ["studentId", "name", "department", "year"],
+      },
+      createdAt: "2024-01-15",
+      updatedAt: "2024-01-15",
+      isActive: true,
+    },
+    {
+      id: "2",
+      name: "卒業証明書",
+      description: "大学の卒業証明書",
+      version: "1.0",
+      schema: {
+        type: "object",
+        properties: {
+          studentId: { type: "string", title: "学籍番号" },
+          name: { type: "string", title: "氏名" },
+          department: { type: "string", title: "学部" },
+          graduationDate: { type: "string", format: "date", title: "卒業日" },
+          degree: { type: "string", title: "学位" },
+        },
+        required: ["studentId", "name", "department", "graduationDate", "degree"],
+      },
+      createdAt: "2024-01-20",
+      updatedAt: "2024-01-20",
+      isActive: true,
+    },
+  ]
 }
 
 /**

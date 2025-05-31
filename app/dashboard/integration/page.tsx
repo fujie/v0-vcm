@@ -198,7 +198,8 @@ export default function IntegrationPage() {
     try {
       const credentialTypes = JSON.parse(localStorage.getItem("credentialTypes") || "[]")
 
-      const response = await fetch("/api/sync/credential-types", {
+      // まず新しい VCM 同期エンドポイントを試す
+      const response = await fetch("/api/vcm/sync", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -206,6 +207,7 @@ export default function IntegrationPage() {
         body: JSON.stringify({
           credentialTypes: credentialTypes.filter((ct: any) => ct.isActive),
           apiKey: settings.apiKey,
+          action: "sync",
         }),
       })
 
@@ -227,6 +229,29 @@ export default function IntegrationPage() {
           title: "同期完了",
           description: message,
         })
+
+        // 同期後にStudent Login Siteの /api/vcm/credential-types エンドポイントをテスト
+        try {
+          const testResponse = await fetch(`${settings.studentLoginUrl}/api/vcm/credential-types`, {
+            method: "GET",
+            headers: {
+              Authorization: `Bearer ${settings.apiKey}`,
+              "X-API-Key": settings.apiKey,
+            },
+          })
+
+          if (testResponse.ok) {
+            const testResult = await testResponse.json()
+            console.log("Student Login Site credential types:", testResult)
+
+            toast({
+              title: "同期確認完了",
+              description: `Student Login Siteで${testResult.data?.count || 0}個のクレデンシャルタイプが確認できました`,
+            })
+          }
+        } catch (testError) {
+          console.log("Student Login Site test failed:", testError)
+        }
       } else {
         toast({
           title: "同期失敗",
@@ -670,6 +695,48 @@ export default function IntegrationPage() {
                     コピー
                   </Button>
                 </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label>VCM クレデンシャルタイプ API</Label>
+                <div className="flex items-center gap-2">
+                  <Input readOnly value={`${window.location.origin}/api/vcm/credential-types`} />
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      navigator.clipboard.writeText(`${window.location.origin}/api/vcm/credential-types`)
+                      toast({
+                        title: "URLをコピーしました",
+                        description: "Student Login Siteの設定画面に貼り付けてください",
+                      })
+                    }}
+                  >
+                    コピー
+                  </Button>
+                </div>
+                <p className="text-xs text-gray-500">
+                  Student Login Site専用のクレデンシャルタイプ取得エンドポイントです。
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label>VCM 同期 API</Label>
+                <div className="flex items-center gap-2">
+                  <Input readOnly value={`${window.location.origin}/api/vcm/sync`} />
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      navigator.clipboard.writeText(`${window.location.origin}/api/vcm/sync`)
+                      toast({
+                        title: "URLをコピーしました",
+                        description: "Student Login Siteの設定画面に貼り付けてください",
+                      })
+                    }}
+                  >
+                    コピー
+                  </Button>
+                </div>
+                <p className="text-xs text-gray-500">クレデンシャルタイプの同期専用エンドポイントです。</p>
               </div>
             </CardContent>
           </Card>
