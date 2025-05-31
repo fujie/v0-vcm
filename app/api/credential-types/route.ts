@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { headers } from "next/headers"
-import { saveApiLog } from "@/lib/api-logs"
+import { getServerCredentialTypes, formatCredentialTypeForAPI, validateApiKey } from "@/lib/server-data"
+import { saveServerApiLog } from "@/lib/server-logs"
 
 // Student Login Site向けのAPI エンドポイント
 export async function GET(request: Request) {
@@ -17,9 +18,8 @@ export async function GET(request: Request) {
     // 認証ヘッダーを検証
     const apiKey = headersList.get("x-api-key") || headersList.get("authorization")?.replace("Bearer ", "")
 
-    // 実際の実装では、APIキーの検証を行う
-    // ここでは簡易的な検証のみ
-    const isValidApiKey = apiKey && (apiKey.startsWith("sl_") || process.env.HEALTH_API_KEY === apiKey)
+    // APIキーの検証
+    const isValidApiKey = validateApiKey(apiKey)
 
     if (!isValidApiKey) {
       const errorResponse = {
@@ -28,7 +28,7 @@ export async function GET(request: Request) {
       }
 
       // エラーログを記録
-      saveApiLog({
+      saveServerApiLog({
         timestamp: new Date().toISOString(),
         endpoint: "/api/credential-types",
         method: "GET",
@@ -46,43 +46,13 @@ export async function GET(request: Request) {
       return NextResponse.json(errorResponse, { status: 401 })
     }
 
-    // ローカルストレージからクレデンシャルタイプを取得
-    // 実際の実装では、データベースから取得
-    const storedCredentialTypes = localStorage.getItem("credentialTypes")
-    const credentialTypes = storedCredentialTypes ? JSON.parse(storedCredentialTypes) : []
+    // サーバーサイドからクレデンシャルタイプを取得
+    const credentialTypes = getServerCredentialTypes()
 
     // Student Login Siteが期待する形式に変換
-    const formattedCredentialTypes = credentialTypes.map((ct: any) => ({
-      id: ct.id,
-      name: ct.name,
-      description: ct.description,
-      version: ct.version || "1.0.0",
-      schema: {
-        $schema: "https://json-schema.org/draft/2020-12/schema",
-        type: "object",
-        properties: ct.schema.properties,
-        required: ct.schema.required || [],
-        additionalProperties: false,
-      },
-      display: {
-        name: ct.name,
-        description: ct.description,
-        locale: "ja-JP",
-        backgroundColor: "#1e40af",
-        textColor: "#ffffff",
-      },
-      issuanceConfig: {
-        validityPeriod: 365,
-        issuer: "https://vcm.example.com",
-        context: ["https://www.w3.org/2018/credentials/v1"],
-        type: ["VerifiableCredential", `${ct.name.replace(/\s/g, "")}Credential`],
-        revocable: true,
-        batchIssuance: false,
-      },
-      createdAt: ct.createdAt || new Date().toISOString(),
-      updatedAt: ct.updatedAt || new Date().toISOString(),
-      status: ct.isActive ? "active" : "inactive",
-    }))
+    const formattedCredentialTypes = credentialTypes
+      .filter((ct) => ct.isActive) // 有効なもののみ
+      .map((ct) => formatCredentialTypeForAPI(ct))
 
     const successResponse = {
       success: true,
@@ -91,7 +61,7 @@ export async function GET(request: Request) {
     }
 
     // 成功ログを記録
-    saveApiLog({
+    saveServerApiLog({
       timestamp: new Date().toISOString(),
       endpoint: "/api/credential-types",
       method: "GET",
@@ -116,7 +86,7 @@ export async function GET(request: Request) {
     }
 
     // エラーログを記録
-    saveApiLog({
+    saveServerApiLog({
       timestamp: new Date().toISOString(),
       endpoint: "/api/credential-types",
       method: "GET",

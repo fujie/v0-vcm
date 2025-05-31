@@ -1,12 +1,11 @@
 "use client"
 
 import type React from "react"
-
 import { useEffect, useState } from "react"
 import { useRouter, usePathname } from "next/navigation"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
-import { Shield, Home, FileText, Users, LogOut, Menu, LinkIcon, List } from "lucide-react"
+import { Shield, Home, FileText, Users, LogOut, Menu, LinkIcon, List, Loader2 } from "lucide-react"
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
 
 export default function DashboardLayout({
@@ -17,23 +16,57 @@ export default function DashboardLayout({
   const router = useRouter()
   const pathname = usePathname()
   const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true)
 
   useEffect(() => {
-    const auth = localStorage.getItem("isAuthenticated")
-    if (!auth) {
+    // Check authentication status
+    try {
+      const auth = localStorage.getItem("isAuthenticated")
+      if (!auth || auth !== "true") {
+        router.push("/login")
+      } else {
+        setIsAuthenticated(true)
+      }
+    } catch (error) {
+      console.error("Auth check error:", error)
       router.push("/login")
-    } else {
-      setIsAuthenticated(true)
+    } finally {
+      setIsCheckingAuth(false)
     }
   }, [router])
 
   const handleLogout = () => {
-    localStorage.removeItem("isAuthenticated")
-    router.push("/login")
+    try {
+      localStorage.removeItem("isAuthenticated")
+    } catch (error) {
+      console.error("Logout error:", error)
+    } finally {
+      router.push("/login")
+    }
   }
 
+  // Show loading state while checking authentication
+  if (isCheckingAuth) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <Loader2 className="h-12 w-12 text-blue-600 animate-spin mx-auto" />
+          <p className="mt-4 text-gray-600">認証状態を確認中...</p>
+        </div>
+      </div>
+    )
+  }
+
+  // If not authenticated, show nothing (will redirect to login)
   if (!isAuthenticated) {
-    return <div>Loading...</div>
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <Loader2 className="h-12 w-12 text-blue-600 animate-spin mx-auto" />
+          <p className="mt-4 text-gray-600">ログインページにリダイレクト中...</p>
+        </div>
+      </div>
+    )
   }
 
   const navigation = [

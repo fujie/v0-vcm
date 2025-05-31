@@ -1,8 +1,49 @@
 import { NextResponse } from "next/server"
 
+// Safe function to get system information
+function getSystemInfo() {
+  try {
+    return {
+      uptime: typeof process !== "undefined" && process.uptime ? process.uptime() : 0,
+      nodeVersion: typeof process !== "undefined" && process.version ? process.version : "unknown",
+      platform: typeof process !== "undefined" && process.platform ? process.platform : "unknown",
+      memory:
+        typeof process !== "undefined" && process.memoryUsage
+          ? process.memoryUsage()
+          : {
+              rss: 0,
+              heapTotal: 0,
+              heapUsed: 0,
+              external: 0,
+              arrayBuffers: 0,
+            },
+      pid: typeof process !== "undefined" && process.pid ? process.pid : 0,
+      env: typeof process !== "undefined" && process.env ? process.env.NODE_ENV || "development" : "development",
+    }
+  } catch (error) {
+    console.error("Error getting system info:", error)
+    return {
+      uptime: 0,
+      nodeVersion: "unknown",
+      platform: "unknown",
+      memory: {
+        rss: 0,
+        heapTotal: 0,
+        heapUsed: 0,
+        external: 0,
+        arrayBuffers: 0,
+      },
+      pid: 0,
+      env: "development",
+    }
+  }
+}
+
 // より詳細なステータス情報を提供するAPI
 export async function GET() {
   try {
+    const systemInfo = getSystemInfo()
+
     // ローカルストレージのデータを取得（実際の実装ではデータベースから取得）
     const credentialTypesCount = 2 // デフォルト値
     const issuedCredentialsCount = 3 // デフォルト値
@@ -16,8 +57,8 @@ export async function GET() {
       version: "1.0.0",
       status: "operational",
       timestamp: new Date().toISOString(),
-      uptime: process.uptime(),
-      environment: process.env.NODE_ENV || "development",
+      uptime: systemInfo.uptime,
+      environment: systemInfo.env,
       statistics: {
         credentialTypes: {
           total: credentialTypesCount,
@@ -37,10 +78,10 @@ export async function GET() {
         },
       },
       system: {
-        nodeVersion: process.version,
-        platform: process.platform,
-        memory: process.memoryUsage(),
-        pid: process.pid,
+        nodeVersion: systemInfo.nodeVersion,
+        platform: systemInfo.platform,
+        memory: systemInfo.memory,
+        pid: systemInfo.pid,
       },
       endpoints: {
         health: "/api/health",

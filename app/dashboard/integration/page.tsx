@@ -59,10 +59,26 @@ export default function IntegrationPage() {
   const checkOwnHealth = async () => {
     try {
       const response = await fetch("/api/health")
-      const health = await response.json()
-      setHealthStatus(health)
+      if (response.ok) {
+        const health = await response.json()
+        setHealthStatus(health)
+      } else {
+        console.error("Health check failed with status:", response.status)
+        setHealthStatus({
+          status: "unhealthy",
+          service: "Verifiable Credential Manager",
+          timestamp: new Date().toISOString(),
+          error: `HTTP ${response.status}`,
+        })
+      }
     } catch (error) {
       console.error("Own health check failed:", error)
+      setHealthStatus({
+        status: "unhealthy",
+        service: "Verifiable Credential Manager",
+        timestamp: new Date().toISOString(),
+        error: error instanceof Error ? error.message : "Unknown error",
+      })
     }
   }
 

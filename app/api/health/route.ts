@@ -27,10 +27,50 @@ function validateHealthApiKey(request: Request): { isValid: boolean; isRequired:
   }
 }
 
+// Safe function to get system information
+function getSystemInfo() {
+  try {
+    return {
+      uptime: typeof process !== "undefined" && process.uptime ? process.uptime() : 0,
+      nodeVersion: typeof process !== "undefined" && process.version ? process.version : "unknown",
+      platform: typeof process !== "undefined" && process.platform ? process.platform : "unknown",
+      memory:
+        typeof process !== "undefined" && process.memoryUsage
+          ? process.memoryUsage()
+          : {
+              rss: 0,
+              heapTotal: 0,
+              heapUsed: 0,
+              external: 0,
+              arrayBuffers: 0,
+            },
+      pid: typeof process !== "undefined" && process.pid ? process.pid : 0,
+      env: typeof process !== "undefined" && process.env ? process.env.NODE_ENV || "unknown" : "unknown",
+    }
+  } catch (error) {
+    console.error("Error getting system info:", error)
+    return {
+      uptime: 0,
+      nodeVersion: "unknown",
+      platform: "unknown",
+      memory: {
+        rss: 0,
+        heapTotal: 0,
+        heapUsed: 0,
+        external: 0,
+        arrayBuffers: 0,
+      },
+      pid: 0,
+      env: "unknown",
+    }
+  }
+}
+
 // Student Login Siteからのヘルスチェックリクエストを受け取るAPI
 export async function GET(request: Request) {
   try {
     const { isValid, isRequired } = validateHealthApiKey(request)
+    const systemInfo = getSystemInfo()
 
     // 基本的なヘルス情報（認証不要）
     const basicHealthData = {
@@ -58,8 +98,8 @@ export async function GET(request: Request) {
     // 詳細なヘルス情報（認証済みまたは認証不要の場合）
     const detailedHealthData = {
       ...basicHealthData,
-      uptime: process.uptime(),
-      environment: process.env.NODE_ENV || "development",
+      uptime: systemInfo.uptime,
+      environment: systemInfo.env,
       features: {
         credentialTypes: true,
         credentialIssuance: true,
@@ -78,7 +118,12 @@ export async function GET(request: Request) {
       checks: {
         database: "healthy",
         storage: "healthy",
-        memory: process.memoryUsage(),
+        memory: systemInfo.memory,
+      },
+      system: {
+        nodeVersion: systemInfo.nodeVersion,
+        platform: systemInfo.platform,
+        pid: systemInfo.pid,
       },
     }
 
@@ -102,7 +147,15 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const { isValid, isRequired } = validateHealthApiKey(request)
-    const body = await request.json().catch(() => ({}))
+    const systemInfo = getSystemInfo()
+
+    let body = {}
+    try {
+      body = await request.json()
+    } catch (jsonError) {
+      // JSON parsing failed, use empty object
+      console.warn("Failed to parse request body:", jsonError)
+    }
 
     // 基本的なヘルス情報
     const basicHealthData = {
@@ -134,8 +187,8 @@ export async function POST(request: Request) {
     // 詳細なヘルス情報
     const detailedHealthData = {
       ...basicHealthData,
-      uptime: process.uptime(),
-      environment: process.env.NODE_ENV || "development",
+      uptime: systemInfo.uptime,
+      environment: systemInfo.env,
       client: {
         userAgent: request.headers.get("user-agent"),
         origin: request.headers.get("origin"),
@@ -155,6 +208,12 @@ export async function POST(request: Request) {
         webhookCredentialIssued: "/api/webhooks/credential-issued",
         webhookCredentialRevoked: "/api/webhooks/credential-revoked",
         sync: "/api/sync/credential-types",
+      },
+      system: {
+        nodeVersion: systemInfo.nodeVersion,
+        platform: systemInfo.platform,
+        pid: systemInfo.pid,
+        memory: systemInfo.memory,
       },
     }
 
