@@ -238,6 +238,29 @@ export default function EditCredentialTypePage() {
       )
       localStorage.setItem("credentialTypes", JSON.stringify(updated))
 
+      // サーバーサイドに同期
+      fetch("/api/admin/sync-credential-types", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          credentialTypes: updated,
+          adminToken: "admin_sync_token",
+        }),
+      })
+        .then((response) => response.json())
+        .then((result) => {
+          if (result.success) {
+            console.log("Server sync successful after updating credential type")
+          } else {
+            console.warn("Server sync failed after updating credential type:", result.error)
+          }
+        })
+        .catch((error) => {
+          console.error("Server sync error after updating credential type:", error)
+        })
+
       // Student Login Siteへの更新通知をシミュレート
       console.log("Student Login Siteに更新通知を送信:", updatedCredentialType)
 

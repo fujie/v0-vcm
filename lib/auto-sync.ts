@@ -22,6 +22,11 @@ export function setupAutoSync(options: SyncOptions) {
 
       try {
         const credentialTypes = JSON.parse(e.newValue)
+
+        // まずサーバーサイドに同期
+        await syncToServer(credentialTypes)
+
+        // 次にStudent Login Siteに同期
         await syncToStudentLoginSite(credentialTypes, options)
       } catch (error) {
         console.error("Auto sync failed:", error)
@@ -35,6 +40,36 @@ export function setupAutoSync(options: SyncOptions) {
   // クリーンアップ関数を返す
   return () => {
     window.removeEventListener("storage", handleStorageChange)
+  }
+}
+
+/**
+ * サーバーサイドへの同期を実行
+ */
+async function syncToServer(credentialTypes: any[]) {
+  try {
+    console.log("Syncing to server...")
+
+    const response = await fetch("/api/admin/sync-credential-types", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        credentialTypes: credentialTypes,
+        adminToken: "admin_sync_token",
+      }),
+    })
+
+    const result = await response.json()
+
+    if (result.success) {
+      console.log("Server sync completed:", result.data)
+    } else {
+      console.error("Server sync failed:", result.error)
+    }
+  } catch (error) {
+    console.error("Server sync error:", error)
   }
 }
 
@@ -83,6 +118,10 @@ export async function manualSync(options: SyncOptions) {
   try {
     const credentialTypes = JSON.parse(localStorage.getItem("credentialTypes") || "[]")
 
+    // サーバーサイドに同期
+    await syncToServer(credentialTypes)
+
+    // Student Login Siteに同期
     const response = await fetch("/api/vcm/sync", {
       method: "POST",
       headers: {

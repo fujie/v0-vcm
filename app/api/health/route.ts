@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { saveServerApiLog } from "@/lib/server-logs"
 
 // ヘルスチェック用のAPI Key検証
 function validateHealthApiKey(request: Request): { isValid: boolean; isRequired: boolean } {
@@ -68,6 +69,12 @@ function getSystemInfo() {
 
 // Student Login Siteからのヘルスチェックリクエストを受け取るAPI
 export async function GET(request: Request) {
+  const startTime = Date.now()
+
+  console.log("=== HEALTH CHECK API CALLED ===")
+  console.log("URL:", request.url)
+  console.log("Headers:", Object.fromEntries(request.headers.entries()))
+
   try {
     const { isValid, isRequired } = validateHealthApiKey(request)
     const systemInfo = getSystemInfo()
@@ -86,13 +93,28 @@ export async function GET(request: Request) {
 
     // 認証が必要で無効な場合は基本情報のみ返す
     if (isRequired && !isValid) {
-      return NextResponse.json(
-        {
-          ...basicHealthData,
-          message: "API key required for detailed health information",
-        },
-        { status: 401 },
-      )
+      const response = {
+        ...basicHealthData,
+        message: "API key required for detailed health information",
+      }
+
+      // ログを記録
+      saveServerApiLog({
+        timestamp: new Date().toISOString(),
+        endpoint: "/api/health",
+        method: "GET",
+        source: "external",
+        sourceIp: request.headers.get("x-forwarded-for") || "unknown",
+        userAgent: request.headers.get("user-agent") || "unknown",
+        requestHeaders: Object.fromEntries(request.headers.entries()),
+        responseStatus: 401,
+        responseBody: response,
+        duration: Date.now() - startTime,
+        success: false,
+        error: "Authentication required",
+      })
+
+      return NextResponse.json(response, { status: 401 })
     }
 
     // 詳細なヘルス情報（認証済みまたは認証不要の場合）
@@ -114,6 +136,8 @@ export async function GET(request: Request) {
         webhookCredentialIssued: "/api/webhooks/credential-issued",
         webhookCredentialRevoked: "/api/webhooks/credential-revoked",
         sync: "/api/sync/credential-types",
+        vcmCredentialTypes: "/api/vcm/credential-types",
+        vcmSync: "/api/vcm/sync",
       },
       checks: {
         database: "healthy",
@@ -127,24 +151,60 @@ export async function GET(request: Request) {
       },
     }
 
+    console.log("Health check successful")
+
+    // ログを記録
+    saveServerApiLog({
+      timestamp: new Date().toISOString(),
+      endpoint: "/api/health",
+      method: "GET",
+      source: "external",
+      sourceIp: request.headers.get("x-forwarded-for") || "unknown",
+      userAgent: request.headers.get("user-agent") || "unknown",
+      requestHeaders: Object.fromEntries(request.headers.entries()),
+      responseStatus: 200,
+      responseBody: { status: "healthy", authenticated: isValid },
+      duration: Date.now() - startTime,
+      success: true,
+    })
+
     return NextResponse.json(detailedHealthData)
   } catch (error) {
     console.error("Health check failed:", error)
 
-    return NextResponse.json(
-      {
-        status: "unhealthy",
-        service: "Verifiable Credential Manager",
-        timestamp: new Date().toISOString(),
-        error: error instanceof Error ? error.message : "Unknown error",
-      },
-      { status: 503 },
-    )
+    const errorResponse = {
+      status: "unhealthy",
+      service: "Verifiable Credential Manager",
+      timestamp: new Date().toISOString(),
+      error: error instanceof Error ? error.message : "Unknown error",
+    }
+
+    // ログを記録
+    saveServerApiLog({
+      timestamp: new Date().toISOString(),
+      endpoint: "/api/health",
+      method: "GET",
+      source: "external",
+      sourceIp: request.headers.get("x-forwarded-for") || "unknown",
+      userAgent: request.headers.get("user-agent") || "unknown",
+      requestHeaders: Object.fromEntries(request.headers.entries()),
+      responseStatus: 503,
+      responseBody: errorResponse,
+      duration: Date.now() - startTime,
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error",
+    })
+
+    return NextResponse.json(errorResponse, { status: 503 })
   }
 }
 
 // POSTリクエストもサポート（Student Login Siteが認証情報を送信する場合）
 export async function POST(request: Request) {
+  const startTime = Date.now()
+
+  console.log("=== HEALTH CHECK POST API CALLED ===")
+
   try {
     const { isValid, isRequired } = validateHealthApiKey(request)
     const systemInfo = getSystemInfo()
@@ -171,17 +231,33 @@ export async function POST(request: Request) {
 
     // 認証が必要で無効な場合
     if (isRequired && !isValid) {
-      return NextResponse.json(
-        {
-          ...basicHealthData,
-          message: "API key required for detailed health information",
-          client: {
-            userAgent: request.headers.get("user-agent"),
-            origin: request.headers.get("origin"),
-          },
+      const response = {
+        ...basicHealthData,
+        message: "API key required for detailed health information",
+        client: {
+          userAgent: request.headers.get("user-agent"),
+          origin: request.headers.get("origin"),
         },
-        { status: 401 },
-      )
+      }
+
+      // ログを記録
+      saveServerApiLog({
+        timestamp: new Date().toISOString(),
+        endpoint: "/api/health",
+        method: "POST",
+        source: "external",
+        sourceIp: request.headers.get("x-forwarded-for") || "unknown",
+        userAgent: request.headers.get("user-agent") || "unknown",
+        requestHeaders: Object.fromEntries(request.headers.entries()),
+        requestBody: body,
+        responseStatus: 401,
+        responseBody: response,
+        duration: Date.now() - startTime,
+        success: false,
+        error: "Authentication required",
+      })
+
+      return NextResponse.json(response, { status: 401 })
     }
 
     // 詳細なヘルス情報
@@ -208,6 +284,8 @@ export async function POST(request: Request) {
         webhookCredentialIssued: "/api/webhooks/credential-issued",
         webhookCredentialRevoked: "/api/webhooks/credential-revoked",
         sync: "/api/sync/credential-types",
+        vcmCredentialTypes: "/api/vcm/credential-types",
+        vcmSync: "/api/vcm/sync",
       },
       system: {
         nodeVersion: systemInfo.nodeVersion,
@@ -217,24 +295,72 @@ export async function POST(request: Request) {
       },
     }
 
+    // ログを記録
+    saveServerApiLog({
+      timestamp: new Date().toISOString(),
+      endpoint: "/api/health",
+      method: "POST",
+      source: "external",
+      sourceIp: request.headers.get("x-forwarded-for") || "unknown",
+      userAgent: request.headers.get("user-agent") || "unknown",
+      requestHeaders: Object.fromEntries(request.headers.entries()),
+      requestBody: body,
+      responseStatus: 200,
+      responseBody: { status: "healthy", authenticated: isValid },
+      duration: Date.now() - startTime,
+      success: true,
+    })
+
     return NextResponse.json(detailedHealthData)
   } catch (error) {
     console.error("Health check POST failed:", error)
 
-    return NextResponse.json(
-      {
-        status: "unhealthy",
-        service: "Verifiable Credential Manager",
-        timestamp: new Date().toISOString(),
-        error: error instanceof Error ? error.message : "Unknown error",
-      },
-      { status: 503 },
-    )
+    const errorResponse = {
+      status: "unhealthy",
+      service: "Verifiable Credential Manager",
+      timestamp: new Date().toISOString(),
+      error: error instanceof Error ? error.message : "Unknown error",
+    }
+
+    // ログを記録
+    saveServerApiLog({
+      timestamp: new Date().toISOString(),
+      endpoint: "/api/health",
+      method: "POST",
+      source: "external",
+      sourceIp: request.headers.get("x-forwarded-for") || "unknown",
+      userAgent: request.headers.get("user-agent") || "unknown",
+      requestHeaders: Object.fromEntries(request.headers.entries()),
+      responseStatus: 503,
+      responseBody: errorResponse,
+      duration: Date.now() - startTime,
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error",
+    })
+
+    return NextResponse.json(errorResponse, { status: 503 })
   }
 }
 
 // OPTIONSリクエストをサポート（CORS preflight）
 export async function OPTIONS() {
+  console.log("=== HEALTH CHECK OPTIONS CALLED ===")
+
+  // ログを記録
+  saveServerApiLog({
+    timestamp: new Date().toISOString(),
+    endpoint: "/api/health",
+    method: "OPTIONS",
+    source: "external",
+    sourceIp: "unknown",
+    userAgent: "unknown",
+    requestHeaders: {},
+    responseStatus: 200,
+    responseBody: { message: "CORS preflight" },
+    duration: 0,
+    success: true,
+  })
+
   return new NextResponse(null, {
     status: 200,
     headers: {

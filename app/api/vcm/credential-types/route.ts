@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { headers } from "next/headers"
 import { getFormattedCredentialTypes, validateApiKey } from "@/lib/credential-types"
-import { saveApiLog } from "@/lib/api-logs"
+import { saveServerApiLog } from "@/lib/server-logs"
 
 // Student Login Site向けの /api/vcm/credential-types エンドポイント
 export async function GET(request: Request) {
@@ -14,9 +14,16 @@ export async function GET(request: Request) {
     requestHeaders[key] = value
   })
 
+  console.log("=== VCM CREDENTIAL TYPES API CALLED ===")
+  console.log("Headers:", requestHeaders)
+  console.log("URL:", request.url)
+
   try {
     // 認証ヘッダーを検証
     const apiKey = headersList.get("x-api-key") || headersList.get("authorization")?.replace("Bearer ", "")
+
+    console.log("API Key provided:", !!apiKey)
+    console.log("API Key starts with sl_:", apiKey?.startsWith("sl_"))
 
     // APIキーの検証
     const isValidApiKey = validateApiKey(apiKey)
@@ -28,8 +35,10 @@ export async function GET(request: Request) {
         error: "Authentication required",
       }
 
-      // エラーログを記録
-      saveApiLog({
+      console.log("Authentication failed")
+
+      // サーバーログを記録
+      saveServerApiLog({
         timestamp: new Date().toISOString(),
         endpoint: "/api/vcm/credential-types",
         method: "GET",
@@ -50,6 +59,8 @@ export async function GET(request: Request) {
     // フォーマットされたクレデンシャルタイプを取得
     const credentialTypes = getFormattedCredentialTypes()
 
+    console.log("Credential types count:", credentialTypes.length)
+
     const successResponse = {
       success: true,
       data: {
@@ -65,8 +76,10 @@ export async function GET(request: Request) {
       },
     }
 
-    // 成功ログを記録
-    saveApiLog({
+    console.log("Sending successful response")
+
+    // サーバーログを記録
+    saveServerApiLog({
       timestamp: new Date().toISOString(),
       endpoint: "/api/vcm/credential-types",
       method: "GET",
@@ -90,8 +103,8 @@ export async function GET(request: Request) {
       message: error instanceof Error ? error.message : "Unknown error",
     }
 
-    // エラーログを記録
-    saveApiLog({
+    // サーバーログを記録
+    saveServerApiLog({
       timestamp: new Date().toISOString(),
       endpoint: "/api/vcm/credential-types",
       method: "GET",
@@ -112,6 +125,23 @@ export async function GET(request: Request) {
 
 // OPTIONSリクエストをサポート（CORS preflight）
 export async function OPTIONS() {
+  console.log("=== VCM CREDENTIAL TYPES OPTIONS CALLED ===")
+
+  // OPTIONSリクエストもログに記録
+  saveServerApiLog({
+    timestamp: new Date().toISOString(),
+    endpoint: "/api/vcm/credential-types",
+    method: "OPTIONS",
+    source: "external",
+    sourceIp: "unknown",
+    userAgent: "unknown",
+    requestHeaders: {},
+    responseStatus: 200,
+    responseBody: { message: "CORS preflight" },
+    duration: 0,
+    success: true,
+  })
+
   return new NextResponse(null, {
     status: 200,
     headers: {

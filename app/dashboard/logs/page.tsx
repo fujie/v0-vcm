@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Search, RefreshCw, Trash2, Eye, Clock, Server, ArrowDownUp } from "lucide-react"
+import { Search, RefreshCw, Trash2, Eye, Clock, Server, ArrowDownUp, Activity } from "lucide-react"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import {
   AlertDialog,
@@ -20,7 +20,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { type ApiLog, getApiLogs, getApiLogById, clearApiLogs } from "@/lib/api-logs"
+import { type ApiLog, getApiLogs, getApiLogById, clearApiLogs, logClientApiRequest } from "@/lib/api-logs"
 import { useToast } from "@/hooks/use-toast"
 
 export default function LogsPage() {
@@ -33,6 +33,7 @@ export default function LogsPage() {
   const [selectedLog, setSelectedLog] = useState<ApiLog | null>(null)
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc")
+  const [autoRefresh, setAutoRefresh] = useState(true)
 
   useEffect(() => {
     loadLogs()
@@ -42,9 +43,46 @@ export default function LogsPage() {
     filterLogs()
   }, [logs, searchTerm, endpointFilter, statusFilter, sortOrder])
 
+  useEffect(() => {
+    // ローカルストレージの変更を監視
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === "apiLogs") {
+        console.log("API logs changed, reloading...")
+        loadLogs()
+      }
+    }
+
+    window.addEventListener("storage", handleStorageChange)
+
+    // 自動更新の設定
+    let interval: NodeJS.Timeout | null = null
+    if (autoRefresh) {
+      interval = setInterval(() => {
+        loadLogs()
+      }, 5000) // 5秒ごとに更新
+    }
+
+    return () => {
+      window.removeEventListener("storage", handleStorageChange)
+      if (interval) {
+        clearInterval(interval)
+      }
+    }
+  }, [autoRefresh])
+
   const loadLogs = () => {
-    const apiLogs = getApiLogs()
-    setLogs(apiLogs)
+    try {
+      const apiLogs = getApiLogs()
+      console.log("Loaded logs:", apiLogs.length)
+      setLogs(apiLogs)
+    } catch (error) {
+      console.error("Failed to load logs:", error)
+      toast({
+        title: "ログの読み込みに失敗しました",
+        description: "ログデータの取得中にエラーが発生しました",
+        variant: "destructive",
+      })
+    }
   }
 
   const filterLogs = () => {
@@ -86,12 +124,20 @@ export default function LogsPage() {
   }
 
   const handleClearLogs = () => {
-    clearApiLogs()
-    setLogs([])
-    toast({
-      title: "ログをクリアしました",
-      description: "すべてのAPIログが削除されました",
-    })
+    const success = clearApiLogs()
+    if (success) {
+      setLogs([])
+      toast({
+        title: "ログをクリアしました",
+        description: "すべてのAPIログが削除されました",
+      })
+    } else {
+      toast({
+        title: "ログのクリアに失敗しました",
+        description: "エラーが発生しました",
+        variant: "destructive",
+      })
+    }
   }
 
   const handleViewLog = (logId: string) => {
@@ -104,6 +150,63 @@ export default function LogsPage() {
 
   const toggleSortOrder = () => {
     setSortOrder(sortOrder === "desc" ? "asc" : "desc")
+  }
+
+  const testApiLogging = async () => {
+    // テスト用のAPIリクエストを送信してログ機能をテスト
+    const startTime = Date.now()
+
+    try {
+      const response = await fetch("/api/vcm/credential-types", {
+        method: "GET",
+        headers: {
+          "X-API-Key": "sl_test_key_for_logging",
+          "Content-Type": "application/json",
+        },
+      })
+
+      const data = await response.json()
+      const duration = Date.now() - startTime
+
+      // クライアントサイドでもログを記録
+      logClientApiRequest(
+        "/api/vcm/credential-types",
+        "GET",
+        { test: true },
+        data,
+        response.status,
+        duration,
+        response.ok ? undefined : "Test API call failed",
+      )
+
+      toast({
+        title: "テストAPIリクエストを送信しました",
+        description: `ステータス: ${response.status}, 時間: ${duration}ms`,
+      })
+
+      // ログを再読み込み
+      setTimeout(() => {
+        loadLogs()
+      }, 1000)
+    } catch (error) {
+      const duration = Date.now() - startTime
+
+      logClientApiRequest(
+        "/api/vcm/credential-types",
+        "GET",
+        { test: true },
+        null,
+        500,
+        duration,
+        error instanceof Error ? error.message : "Unknown error",
+      )
+
+      toast({
+        title: "テストAPIリクエストが失敗しました",
+        description: error instanceof Error ? error.message : "Unknown error",
+        variant: "destructive",
+      })
+    }
   }
 
   const formatDate = (dateString: string) => {
@@ -154,6 +257,12 @@ export default function LogsPage() {
           外部
         </Badge>
       )
+    } else if (source === "client") {
+      return (
+        <Badge variant="outline" className="bg-green-50">
+          クライアント
+        </Badge>
+      )
     } else {
       return (
         <Badge variant="outline" className="bg-blue-50">
@@ -170,12 +279,23 @@ export default function LogsPage() {
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">APIログ</h1>
-          <p className="text-gray-600 mt-2">Student Login Siteとの通信ログを表示</p>
+          <p className="text-gray-600 mt-2">Student Login Siteとの通信ログを表示 ({logs.length}件)</p>
         </div>
         <div className="flex gap-2">
+          <Button variant="outline" onClick={testApiLogging}>
+            <Activity className="h-4 w-4 mr-2" />
+            テスト
+          </Button>
           <Button variant="outline" onClick={loadLogs}>
             <RefreshCw className="h-4 w-4 mr-2" />
             更新
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => setAutoRefresh(!autoRefresh)}
+            className={autoRefresh ? "bg-green-50" : ""}
+          >
+            {autoRefresh ? "自動更新: ON" : "自動更新: OFF"}
           </Button>
           <AlertDialog>
             <AlertDialogTrigger asChild>
@@ -198,6 +318,34 @@ export default function LogsPage() {
             </AlertDialogContent>
           </AlertDialog>
         </div>
+      </div>
+
+      {/* 統計情報 */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <Card>
+          <CardContent className="p-4">
+            <div className="text-2xl font-bold">{logs.length}</div>
+            <div className="text-sm text-gray-600">総ログ数</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <div className="text-2xl font-bold text-green-600">{logs.filter((log) => log.success).length}</div>
+            <div className="text-sm text-gray-600">成功</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <div className="text-2xl font-bold text-red-600">{logs.filter((log) => !log.success).length}</div>
+            <div className="text-sm text-gray-600">エラー</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <div className="text-2xl font-bold text-blue-600">{uniqueEndpoints.length}</div>
+            <div className="text-sm text-gray-600">エンドポイント数</div>
+          </CardContent>
+        </Card>
       </div>
 
       {/* フィルターとサーチ */}
@@ -232,6 +380,7 @@ export default function LogsPage() {
                 <option value="credential-types">クレデンシャルタイプ</option>
                 <option value="sync">同期</option>
                 <option value="health">ヘルスチェック</option>
+                <option value="vcm">VCM</option>
               </select>
             </div>
             <div className="space-y-2">
@@ -280,6 +429,12 @@ export default function LogsPage() {
                         <span>{log.method}</span>
                         <span>•</span>
                         <span>{log.duration}ms</span>
+                        {log.sourceIp && log.sourceIp !== "unknown" && (
+                          <>
+                            <span>•</span>
+                            <span>{log.sourceIp}</span>
+                          </>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -298,7 +453,17 @@ export default function LogsPage() {
         ) : (
           <Card>
             <CardContent className="text-center py-12">
-              <p className="text-gray-600">ログが見つかりません</p>
+              <p className="text-gray-600">
+                {logs.length === 0
+                  ? "ログが見つかりません。APIリクエストを送信してログを生成してください。"
+                  : "フィルター条件に一致するログが見つかりません"}
+              </p>
+              {logs.length === 0 && (
+                <Button onClick={testApiLogging} className="mt-4">
+                  <Activity className="h-4 w-4 mr-2" />
+                  テストAPIリクエストを送信
+                </Button>
+              )}
             </CardContent>
           </Card>
         )}

@@ -22,8 +22,9 @@ export interface ApiLog {
  */
 export function saveApiLog(log: Omit<ApiLog, "id">) {
   try {
-    // ブラウザ環境でのみ実行
-    if (typeof window === "undefined" || typeof localStorage === "undefined") {
+    // サーバーサイドでは何もしない
+    if (typeof window === "undefined") {
+      console.log("Server-side API log:", JSON.stringify(log, null, 2))
       return null
     }
 
@@ -33,10 +34,20 @@ export function saveApiLog(log: Omit<ApiLog, "id">) {
       id: `log_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
     }
 
-    // 最大100件のログを保持
-    const updatedLogs = [newLog, ...logs].slice(0, 100)
+    // 最大200件のログを保持（増加）
+    const updatedLogs = [newLog, ...logs].slice(0, 200)
     localStorage.setItem("apiLogs", JSON.stringify(updatedLogs))
 
+    // ログページに変更を通知
+    window.dispatchEvent(
+      new StorageEvent("storage", {
+        key: "apiLogs",
+        newValue: JSON.stringify(updatedLogs),
+        storageArea: localStorage,
+      }),
+    )
+
+    console.log("API Log saved:", newLog)
     return newLog
   } catch (error) {
     console.error("Error saving API log:", error)
@@ -49,8 +60,8 @@ export function saveApiLog(log: Omit<ApiLog, "id">) {
  */
 export function getApiLogs(): ApiLog[] {
   try {
-    // ブラウザ環境でのみ実行
-    if (typeof window === "undefined" || typeof localStorage === "undefined") {
+    // サーバーサイドでは空配列を返す
+    if (typeof window === "undefined") {
       return []
     }
 
@@ -80,10 +91,57 @@ export function getApiLogById(id: string): ApiLog | null {
  */
 export function clearApiLogs() {
   try {
+    if (typeof window === "undefined") {
+      return false
+    }
+
     localStorage.removeItem("apiLogs")
+
+    // ログページに変更を通知
+    window.dispatchEvent(
+      new StorageEvent("storage", {
+        key: "apiLogs",
+        newValue: null,
+        storageArea: localStorage,
+      }),
+    )
+
     return true
   } catch (error) {
     console.error("Error clearing API logs:", error)
     return false
   }
+}
+
+/**
+ * クライアントサイドでAPIログを記録するためのヘルパー関数
+ */
+export function logClientApiRequest(
+  endpoint: string,
+  method: string,
+  requestData?: any,
+  responseData?: any,
+  responseStatus?: number,
+  duration?: number,
+  error?: string,
+) {
+  if (typeof window === "undefined") return
+
+  const log = {
+    timestamp: new Date().toISOString(),
+    endpoint,
+    method,
+    source: "client",
+    sourceIp: "client",
+    userAgent: navigator.userAgent,
+    requestHeaders: {},
+    requestBody: requestData,
+    responseStatus: responseStatus || (error ? 500 : 200),
+    responseBody: responseData,
+    duration: duration || 0,
+    success: !error && (responseStatus ? responseStatus < 400 : true),
+    error,
+  }
+
+  saveApiLog(log)
 }

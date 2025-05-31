@@ -54,7 +54,18 @@ export default function IntegrationPage() {
 
     // 自身のヘルスチェックを実行
     checkOwnHealth()
-  }, [])
+
+    // 自動同期を設定
+    if (settings.enabled && settings.autoSync) {
+      const cleanup = setupAutoSync({
+        apiKey: settings.apiKey,
+        enabled: settings.autoSync,
+        studentLoginUrl: settings.studentLoginUrl,
+      })
+
+      return cleanup
+    }
+  }, [settings.enabled, settings.autoSync, settings.apiKey, settings.studentLoginUrl])
 
   const checkOwnHealth = async () => {
     try {
@@ -198,7 +209,28 @@ export default function IntegrationPage() {
     try {
       const credentialTypes = JSON.parse(localStorage.getItem("credentialTypes") || "[]")
 
-      // まず新しい VCM 同期エンドポイントを試す
+      // まずサーバーサイドに同期
+      console.log("Syncing to server first...")
+      const serverSyncResponse = await fetch("/api/admin/sync-credential-types", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          credentialTypes: credentialTypes,
+          adminToken: "admin_sync_token",
+        }),
+      })
+
+      const serverSyncResult = await serverSyncResponse.json()
+
+      if (serverSyncResult.success) {
+        console.log("Server sync successful:", serverSyncResult.data)
+      } else {
+        console.warn("Server sync failed:", serverSyncResult.error)
+      }
+
+      // 次に VCM 同期エンドポイントを使用してStudent Login Siteに同期
       const response = await fetch("/api/vcm/sync", {
         method: "POST",
         headers: {
@@ -1099,4 +1131,91 @@ function StudentLoginSimulator() {
       </div>
     </div>
   )
+}
+
+// setupAutoSync 関数を追加
+function setupAutoSync(params: {
+  apiKey: string
+  studentLoginUrl: string
+  enabled: boolean
+}) {
+  console.log("Setting up auto sync...")
+
+  let syncInterval: any = null
+
+  if (params.enabled) {
+    syncInterval = setInterval(async () => {
+      console.log("Auto syncing...")
+      try {
+        const credentialTypes = JSON.parse(localStorage.getItem("credentialTypes") || "[]")
+
+        // まずサーバーサイドに同期
+        console.log("Auto Sync: Syncing to server first...")
+        const serverSyncResponse = await fetch("/api/admin/sync-credential-types", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            credentialTypes: credentialTypes,
+            adminToken: "admin_sync_token",
+          }),
+        })
+
+        const serverSyncResult = await serverSyncResponse.json()
+
+        if (serverSyncResult.success) {
+          console.log("Auto Sync: Server sync successful:", serverSyncResult.data)
+        } else {
+          console.warn("Auto Sync: Server sync failed:", serverSyncResult.error)
+        }
+
+        // 次に VCM 同期エンドポイントを使用してStudent Login Siteに同期
+        const response = await fetch("/api/vcm/sync", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            credentialTypes: credentialTypes.filter((ct: any) => ct.isActive),
+            apiKey: params.apiKey,
+            action: "sync",
+          }),
+        })
+
+        const result = await response.json()
+
+        if (result.success) {
+          console.log("Auto Sync: Synced successfully")
+        } else {
+          console.warn("Auto Sync: Sync failed", result.error)
+        }
+
+        // 同期後にStudent Login Siteの /api/vcm/credential-types エンドポイントをテスト
+        try {
+          const testResponse = await fetch(`${params.studentLoginUrl}/api/vcm/credential-types`, {
+            method: "GET",
+            headers: {
+              Authorization: `Bearer ${params.apiKey}`,
+              "X-API-Key": params.apiKey,
+            },
+          })
+
+          if (testResponse.ok) {
+            const testResult = await testResponse.json()
+            console.log("Auto Sync: Student Login Site credential types:", testResult)
+          }
+        } catch (testError) {
+          console.log("Auto Sync: Student Login Site test failed:", testError)
+        }
+      } catch (error) {
+        console.error("Auto Sync: Error during auto sync:", error)
+      }
+    }, 60000) // 60秒ごとに同期
+  }
+
+  return () => {
+    console.log("Clearing auto sync interval...")
+    clearInterval(syncInterval)
+  }
 }
