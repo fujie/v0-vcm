@@ -209,28 +209,35 @@ export default function IntegrationPage() {
     try {
       const credentialTypes = JSON.parse(localStorage.getItem("credentialTypes") || "[]")
 
-      // まずサーバーサイドに同期
-      console.log("Syncing to server first...")
-      const serverSyncResponse = await fetch("/api/admin/sync-credential-types", {
+      console.log("Starting credential types sync...")
+      console.log(
+        "Local credential types:",
+        credentialTypes.map((ct: any) => ({ id: ct.id, name: ct.name })),
+      )
+
+      // まずクライアントサイドのデータをサーバーサイドに同期
+      console.log("Step 1: Syncing client data to server...")
+      const clientSyncResponse = await fetch("/api/vcm/sync-client-data", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
           credentialTypes: credentialTypes,
-          adminToken: "admin_sync_token",
+          apiKey: settings.apiKey,
         }),
       })
 
-      const serverSyncResult = await serverSyncResponse.json()
+      const clientSyncResult = await clientSyncResponse.json()
 
-      if (serverSyncResult.success) {
-        console.log("Server sync successful:", serverSyncResult.data)
+      if (clientSyncResult.success) {
+        console.log("Client data sync successful:", clientSyncResult.data)
       } else {
-        console.warn("Server sync failed:", serverSyncResult.error)
+        console.warn("Client data sync failed:", clientSyncResult.error)
       }
 
       // 次に VCM 同期エンドポイントを使用してStudent Login Siteに同期
+      console.log("Step 2: Syncing to Student Login Site...")
       const response = await fetch("/api/vcm/sync", {
         method: "POST",
         headers: {
@@ -263,6 +270,7 @@ export default function IntegrationPage() {
         })
 
         // 同期後にStudent Login Siteの /api/vcm/credential-types エンドポイントをテスト
+        console.log("Step 3: Testing Student Login Site endpoint...")
         try {
           const testResponse = await fetch(`${settings.studentLoginUrl}/api/vcm/credential-types`, {
             method: "GET",
@@ -280,6 +288,10 @@ export default function IntegrationPage() {
               title: "同期確認完了",
               description: `Student Login Siteで${testResult.data?.count || 0}個のクレデンシャルタイプが確認できました`,
             })
+          } else {
+            console.error("Student Login Site test failed with status:", testResponse.status)
+            const errorText = await testResponse.text()
+            console.error("Error response:", errorText)
           }
         } catch (testError) {
           console.log("Student Login Site test failed:", testError)
@@ -292,6 +304,7 @@ export default function IntegrationPage() {
         })
       }
     } catch (error) {
+      console.error("Sync error:", error)
       toast({
         title: "同期エラー",
         description: "同期中にエラーが発生しました",
@@ -1149,25 +1162,25 @@ function setupAutoSync(params: {
       try {
         const credentialTypes = JSON.parse(localStorage.getItem("credentialTypes") || "[]")
 
-        // まずサーバーサイドに同期
-        console.log("Auto Sync: Syncing to server first...")
-        const serverSyncResponse = await fetch("/api/admin/sync-credential-types", {
+        // まずクライアントサイドのデータをサーバーサイドに同期
+        console.log("Auto Sync: Syncing client data to server first...")
+        const clientSyncResponse = await fetch("/api/vcm/sync-client-data", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
             credentialTypes: credentialTypes,
-            adminToken: "admin_sync_token",
+            apiKey: params.apiKey,
           }),
         })
 
-        const serverSyncResult = await serverSyncResponse.json()
+        const clientSyncResult = await clientSyncResponse.json()
 
-        if (serverSyncResult.success) {
-          console.log("Auto Sync: Server sync successful:", serverSyncResult.data)
+        if (clientSyncResult.success) {
+          console.log("Auto Sync: Client data sync successful:", clientSyncResult.data)
         } else {
-          console.warn("Auto Sync: Server sync failed:", serverSyncResult.error)
+          console.warn("Auto Sync: Client data sync failed:", clientSyncResult.error)
         }
 
         // 次に VCM 同期エンドポイントを使用してStudent Login Siteに同期
